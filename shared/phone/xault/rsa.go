@@ -1,8 +1,14 @@
 package xault
 
 import (
+	"bytes"
+	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/big"
@@ -13,16 +19,50 @@ var bigOne = big.NewInt(1)
 
 // DualKey is a single RSA key with different exponents for encrypting and signing.
 type DualKey struct {
-	// D contains the two private exponents, D[0] is used for encryption, D[1] for signing.
-	D [2]*big.Int
+	// D0 is the private exponent used for encryption, D1 is the same but for signiatures.
+	D0, D1 *big.Int
 
 	// P and Q are used for both exponents.
 	P, Q *big.Int
+
+	encKey, sigKey *rsa.PrivateKey
 }
 
-// MakeDualKey creates an RSA pair with two exponents, so that one set of keys can encrypt and sign
+type DualPublicKey struct {
+	// E0 is the public exponent used for encryption, E1 is the same but for verification.
+	E0, E1 int
+
+	// N is the modulus for both exponents.
+	N *big.Int
+
+	encKey, sigKey *rsa.PublicKey
+}
+
+func (dk *DualKey) MakePublicKey() (*DualPublicKey, error) {
+	enc := dk.getRSADecryptionKey()
+	sig := dk.getRSASigniatureKey()
+	if enc.N.Cmp(sig.N) != 0 {
+		return nil, fmt.Errorf("keys are malformed")
+	}
+	dpk := &DualPublicKey{
+		E0: enc.PublicKey.E,
+		E1: sig.PublicKey.E,
+		N:  enc.PublicKey.N,
+	}
+	return dpk, nil
+}
+
+func (dpk *DualPublicKey) getRSAEncryptionKey() *rsa.PublicKey {
+	return &rsa.PublicKey{E: dpk.E0, N: dpk.N}
+}
+
+func (dpk *DualPublicKey) getRSAVerificationKey() *rsa.PublicKey {
+	return &rsa.PublicKey{E: dpk.E1, N: dpk.N}
+}
+
+// makeDualKey creates an RSA pair with two exponents, so that one set of keys can encrypt and sign
 // safely because each gets its own exponent.
-func MakeDualKey(random io.Reader, bits int) (*DualKey, error) {
+func makeDualKey(random io.Reader, bits int) (*DualKey, error) {
 	if bits%2 == 1 || bits < 128 {
 		return nil, fmt.Errorf("bits must be even and greater than 128")
 	}
@@ -75,9 +115,10 @@ func MakeDualKey(random io.Reader, bits int) (*DualKey, error) {
 			}
 			if len(D) == 2 {
 				dk := &DualKey{
-					D: [2]*big.Int{D[0], D[1]},
-					P: P,
-					Q: Q,
+					D0: D[0],
+					D1: D[1],
+					P:  P,
+					Q:  Q,
 				}
 				return dk, nil
 			}
@@ -98,13 +139,163 @@ func (dk *DualKey) makeRSAKey(D *big.Int) *rsa.PrivateKey {
 	e := big.NewInt(0)
 	big.NewInt(0).GCD(e, big.NewInt(0), pk.D, totient)
 	pk.E = int(e.Int64())
+	pk.Precompute()
 	return &pk
 }
 
-func (dk *DualKey) makeRSAEncryptionKey() *rsa.PrivateKey {
-	return dk.makeRSAKey(dk.D[0])
+func (dk *DualKey) getRSADecryptionKey() *rsa.PrivateKey {
+	if dk.encKey == nil {
+		dk.encKey = dk.makeRSAKey(dk.D0)
+	}
+	return dk.encKey
 }
 
-func (dk *DualKey) makeRSASigniatureKey() *rsa.PrivateKey {
-	return dk.makeRSAKey(dk.D[1])
+func (dk *DualKey) getRSASigniatureKey() *rsa.PrivateKey {
+	if dk.sigKey == nil {
+		dk.sigKey = dk.makeRSAKey(dk.D1)
+	}
+	return dk.sigKey
+}
+
+// Encrypts a large plaintext by using RSA encryption to encrypt a one-time-key that is used as an
+// AES-256 key to encrypt the plaintext.  The encrypted key, ciphertext, and info are also signed.
+// Format of the final envelope is:
+// L3, 4 bytes, length of signiature
+// L0, 4 bytes, length of internal info
+// L1, 4 bytes, length of encrypted otk
+// L2, 4 bytes, length of ciphertext
+// internal info, L0 bytes
+// encrypted otk, L1 bytes
+// ciphertext, L2 bytes
+// signiature, L3 bytes, the signiature covers everything from L0 through the ciphertext
+func (dk *DualKey) sealEnvelope(random io.Reader, dst *DualPublicKey, plaintext []byte) (envelope []byte, err error) {
+	info := []byte("version 1") // Not sure what to do with this for now
+
+	// otk is a one-time-key, it will only ever be used to encrypt this plaintext
+	otk := make([]byte, 32)
+	if n, err := random.Read(otk); n != len(otk) || err != nil {
+		return nil, fmt.Errorf("unable to read enough random bytes to make a otk: %v", err)
+	}
+	block, err := aes.NewCipher(otk)
+	if err != nil {
+		fmt.Errorf("unable to make cipher: %v\n", err)
+		return
+	}
+	// Pad the plaintext by adding a 1, then adding 0s until the length is a multiple of blocks.
+	plaintext = append(plaintext, 1)
+	for len(plaintext)%block.BlockSize() != 0 {
+		plaintext = append(plaintext, 0)
+	}
+
+	// Notice that the IV here is all zeroes, this is ok because this otk will never be used again.
+	ciphertext := make([]byte, len(plaintext))
+	cipher.NewCBCEncrypter(block, make([]byte, block.BlockSize())).CryptBlocks(ciphertext, plaintext)
+
+	// Now encrypt the otk with the recipient's encryption key
+	encryptedOtk, err := rsa.EncryptOAEP(sha256.New(), random, dst.getRSAEncryptionKey(), otk, []byte("otk"))
+	if err != nil {
+		return nil, fmt.Errorf("unable to encrypt otk: %v", err)
+	}
+	for i := range otk {
+		otk[i] = 0
+	}
+
+	// Start the buffer with 4 empty bytes, we'll fill these in later with the length of the signiature
+	buf := bytes.NewBuffer(make([]byte, 4))
+	chunks := [][]byte{info, encryptedOtk, ciphertext}
+	for _, chunk := range chunks {
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(chunk))); err != nil {
+			return nil, fmt.Errorf("unable to finish writing the envelope")
+		}
+	}
+	for _, chunk := range chunks {
+		if n, err := buf.Write(chunk); n != len(chunk) || err != nil {
+			return nil, fmt.Errorf("unable to finish writing the envelope")
+		}
+	}
+
+	// Now we hash and sign the envelope that we have so far so that it can't be tampered with.
+	h := sha256.Sum256(buf.Bytes()[4:])
+	signiature, err := rsa.SignPKCS1v15(random, dk.getRSASigniatureKey(), crypto.SHA256, h[:])
+	if err != nil {
+		return nil, fmt.Errorf("unable to sign envelope: %v", err)
+	}
+	if n, err := buf.Write(signiature); n != len(signiature) || err != nil {
+		return nil, fmt.Errorf("unable to sign envelope: %v", err)
+	}
+	envelope = buf.Bytes()
+	buf.Truncate(0)
+	binary.Write(buf, binary.LittleEndian, uint32(len(signiature)))
+
+	return envelope, nil
+}
+
+func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope []byte) (plaintext []byte, err error) {
+	errUnableToVerify := fmt.Errorf("unable to verify envelope")
+	if len(envelope) < 32 {
+		return nil, errUnableToVerify
+	}
+
+	// Strip off the length of the signiature from the front of the envelope
+	var siglen uint32
+	if err := binary.Read(bytes.NewBuffer(envelope[0:4]), binary.LittleEndian, &siglen); err != nil {
+		return nil, errUnableToVerify
+	}
+	envelope = envelope[4:]
+	if int(siglen) > len(envelope)+24 {
+		return nil, errUnableToVerify
+	}
+	// Strip the signiature itself off the back of the envelope
+	sig := envelope[len(envelope)-int(siglen):]
+	envelope = envelope[0 : len(envelope)-int(siglen)]
+	h := sha256.Sum256(envelope)
+	if err := rsa.VerifyPKCS1v15(src.getRSAVerificationKey(), crypto.SHA256, h[:], sig); err != nil {
+		return nil, errUnableToVerify
+	}
+
+	// We can now trust that the envelope is from who we thought it was from.
+	errVerifiedBufMalformed := fmt.Errorf("envelope verified, but contents are malformed")
+	var infoLen, eotkLen, cipherLen uint32
+	buf := bytes.NewBuffer(envelope)
+	for _, val := range []*uint32{&infoLen, &eotkLen, &cipherLen} {
+		if err := binary.Read(buf, binary.LittleEndian, val); err != nil {
+			return nil, errVerifiedBufMalformed
+		}
+	}
+	if int64(infoLen)+int64(eotkLen)+int64(cipherLen) != int64(len(buf.Bytes())) {
+		return nil, errVerifiedBufMalformed
+	}
+
+	info := make([]byte, int(infoLen))
+	eotk := make([]byte, int(eotkLen))
+	ciphertext := make([]byte, int(cipherLen))
+	for _, chunk := range [][]byte{info, eotk, ciphertext} {
+		if n, err := buf.Read(chunk); n != len(chunk) || err != nil {
+			return nil, errVerifiedBufMalformed
+		}
+	}
+
+	otk, err := rsa.DecryptOAEP(sha256.New(), random, dk.getRSADecryptionKey(), eotk, []byte("otk"))
+	if err != nil {
+		return nil, errVerifiedBufMalformed
+	}
+
+	block, err := aes.NewCipher(otk)
+	if err != nil {
+		return nil, errVerifiedBufMalformed
+	}
+	plaintext = ciphertext
+	cipher.NewCBCDecrypter(block, make([]byte, block.BlockSize())).CryptBlocks(plaintext, ciphertext)
+	for len(plaintext) > 0 {
+		b := plaintext[len(plaintext)-1]
+		plaintext = plaintext[0 : len(plaintext)-1]
+		if b == 1 {
+			break
+		}
+		if b != 0 {
+			return nil, errVerifiedBufMalformed
+		}
+	}
+
+	return plaintext, nil
 }
