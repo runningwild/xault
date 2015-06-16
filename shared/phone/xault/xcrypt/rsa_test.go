@@ -1,4 +1,4 @@
-package xault
+package xcrypt
 
 import (
 	"crypto"
@@ -15,7 +15,7 @@ func TestDualKeys(t *testing.T) {
 	c.Seed(123456789)
 
 	Convey("can make dual keys successfully", t, func() {
-		dk, err := makeDualKey(c, 1024)
+		dk, err := MakeDualKey(c, 1024)
 		So(err, ShouldBeNil)
 		So(dk, ShouldNotBeNil)
 		keys := []*rsa.PrivateKey{dk.getRSADecryptionKey(), dk.getRSASigniatureKey()}
@@ -56,43 +56,43 @@ func TestEnvelope(t *testing.T) {
 	c.Seed(123456789)
 	keySize := 2048
 	Convey("dualKeys can be used to seal and open envelopes", t, func() {
-		localPrivate, err := makeDualKey(c, keySize)
+		localPrivate, err := MakeDualKey(c, keySize)
 		So(err, ShouldBeNil)
 		localPublic, err := localPrivate.MakePublicKey()
 		So(err, ShouldBeNil)
-		remotePrivate, err := makeDualKey(c, keySize)
+		remotePrivate, err := MakeDualKey(c, keySize)
 		So(err, ShouldBeNil)
 		remotePublic, err := remotePrivate.MakePublicKey()
 		So(err, ShouldBeNil)
 
 		plaintext := []byte("this is some awesome plaintext, check out how awesome it is!!!")
-		envelope, err := remotePrivate.sealEnvelope(c, localPublic, plaintext)
+		envelope, err := remotePrivate.SealEnvelope(c, localPublic, plaintext)
 		So(err, ShouldBeNil)
 		So(envelope, ShouldNotBeNil)
-		decoded, err := localPrivate.openEnvelope(c, remotePublic, envelope)
+		decoded, err := localPrivate.OpenEnvelope(c, remotePublic, envelope)
 		So(err, ShouldBeNil)
 		So(decoded, ShouldResemble, plaintext)
 
 		Convey("open envelope doesn't open malformed inputs", func() {
-			otherPrivate, err := makeDualKey(c, keySize)
+			otherPrivate, err := MakeDualKey(c, keySize)
 			So(err, ShouldBeNil)
 			otherPublic, err := otherPrivate.MakePublicKey()
 			So(err, ShouldBeNil)
 
 			// Shouldn't be able to verify with the wrong public key.
-			_, err = localPrivate.openEnvelope(c, otherPublic, envelope)
-			So(err, ShouldEqual, errUnableToVerify)
+			_, err = localPrivate.OpenEnvelope(c, otherPublic, envelope)
+			So(err, ShouldEqual, ErrUnableToVerify)
 
 			// Shouldn't be able to verify if we're missing a byte.
-			_, err = localPrivate.openEnvelope(c, remotePublic, envelope[1:])
-			So(err, ShouldEqual, errUnableToVerify)
-			_, err = localPrivate.openEnvelope(c, remotePublic, envelope[0:len(envelope)-1])
-			So(err, ShouldEqual, errUnableToVerify)
+			_, err = localPrivate.OpenEnvelope(c, remotePublic, envelope[1:])
+			So(err, ShouldEqual, ErrUnableToVerify)
+			_, err = localPrivate.OpenEnvelope(c, remotePublic, envelope[0:len(envelope)-1])
+			So(err, ShouldEqual, ErrUnableToVerify)
 
 			// Shouldn't be able to verify if a byte is corrupted.
 			envelope[50]++
-			_, err = localPrivate.openEnvelope(c, remotePublic, envelope)
-			So(err, ShouldEqual, errUnableToVerify)
+			_, err = localPrivate.OpenEnvelope(c, remotePublic, envelope)
+			So(err, ShouldEqual, ErrUnableToVerify)
 			envelope[50]--
 		})
 	})
@@ -102,11 +102,11 @@ func benchmarkSealEnvelope(msgSize, keySize int, b *testing.B) {
 	b.StopTimer()
 	c := cmwc.MakeGoodCmwc()
 	c.Seed(123456789)
-	sender, err := makeDualKey(c, keySize)
+	sender, err := MakeDualKey(c, keySize)
 	if err != nil {
 		panic(err)
 	}
-	receiverPrivate, err := makeDualKey(c, keySize)
+	receiverPrivate, err := MakeDualKey(c, keySize)
 	if err != nil {
 		panic(err)
 	}
@@ -115,12 +115,12 @@ func benchmarkSealEnvelope(msgSize, keySize int, b *testing.B) {
 		panic(err)
 	}
 	plaintext := make([]byte, msgSize)
-	if _, err := sender.sealEnvelope(c, receiver, plaintext); err != nil {
+	if _, err := sender.SealEnvelope(c, receiver, plaintext); err != nil {
 		panic(err)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		sender.sealEnvelope(c, receiver, plaintext)
+		sender.SealEnvelope(c, receiver, plaintext)
 	}
 }
 
@@ -140,7 +140,7 @@ func benchmarkOpenEnvelope(msgSize, keySize int, b *testing.B) {
 	b.StopTimer()
 	c := cmwc.MakeGoodCmwc()
 	c.Seed(123456789)
-	senderPrivate, err := makeDualKey(c, keySize)
+	senderPrivate, err := MakeDualKey(c, keySize)
 	if err != nil {
 		panic(err)
 	}
@@ -148,7 +148,7 @@ func benchmarkOpenEnvelope(msgSize, keySize int, b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
-	receiverPrivate, err := makeDualKey(c, keySize)
+	receiverPrivate, err := MakeDualKey(c, keySize)
 	if err != nil {
 		panic(err)
 	}
@@ -157,11 +157,11 @@ func benchmarkOpenEnvelope(msgSize, keySize int, b *testing.B) {
 		panic(err)
 	}
 	plaintext := make([]byte, msgSize)
-	envelope, err := senderPrivate.sealEnvelope(c, receiver, plaintext)
+	envelope, err := senderPrivate.SealEnvelope(c, receiver, plaintext)
 	if err != nil {
 		panic(err)
 	}
-	msg, err := receiverPrivate.openEnvelope(c, sender, envelope)
+	msg, err := receiverPrivate.OpenEnvelope(c, sender, envelope)
 	if err != nil {
 		panic(err)
 	}
@@ -170,7 +170,7 @@ func benchmarkOpenEnvelope(msgSize, keySize int, b *testing.B) {
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		receiverPrivate.openEnvelope(c, sender, envelope)
+		receiverPrivate.OpenEnvelope(c, sender, envelope)
 	}
 }
 

@@ -1,4 +1,4 @@
-package xault
+package xcrypt
 
 import (
 	"bytes"
@@ -60,9 +60,9 @@ func (dpk *DualPublicKey) getRSAVerificationKey() *rsa.PublicKey {
 	return &rsa.PublicKey{E: dpk.E1, N: dpk.N}
 }
 
-// makeDualKey creates an RSA pair with two exponents, so that one set of keys can encrypt and sign
+// MakeDualKey creates an RSA pair with two exponents, so that one set of keys can encrypt and sign
 // safely because each gets its own exponent.
-func makeDualKey(random io.Reader, bits int) (*DualKey, error) {
+func MakeDualKey(random io.Reader, bits int) (*DualKey, error) {
 	if bits%2 == 1 || bits < 128 {
 		return nil, fmt.Errorf("bits must be even and greater than 128")
 	}
@@ -168,7 +168,7 @@ func (dk *DualKey) getRSASigniatureKey() *rsa.PrivateKey {
 // encrypted otk, L1 bytes
 // ciphertext, L2 bytes
 // signiature, L3 bytes, the signiature covers everything from L0 through the ciphertext
-func (dk *DualKey) sealEnvelope(random io.Reader, dst *DualPublicKey, plaintext []byte) (envelope []byte, err error) {
+func (dk *DualKey) SealEnvelope(random io.Reader, dst *DualPublicKey, plaintext []byte) (envelope []byte, err error) {
 	info := []byte("version 1") // Not sure what to do with this for now
 
 	// otk is a one-time-key, it will only ever be used to encrypt this plaintext
@@ -230,31 +230,31 @@ func (dk *DualKey) sealEnvelope(random io.Reader, dst *DualPublicKey, plaintext 
 	return envelope, nil
 }
 
-var errUnableToVerify = fmt.Errorf("unable to verify envelope")
-var errVerifiedBufMalformed = fmt.Errorf("envelope verified, but contents are malformed")
+var ErrUnableToVerify = fmt.Errorf("unable to verify envelope")
+var ErrVerifiedBufMalformed = fmt.Errorf("envelope verified, but contents are malformed")
 
-// openEnvelope opens an envelope created with sealEnvelope.  It verifies that the message is signed
+// OpenEnvelope opens an envelope created with SealEnvelope.  It verifies that the message is signed
 // by src, then decrypts it using the enclosed key.
-func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope []byte) (plaintext []byte, err error) {
+func (dk *DualKey) OpenEnvelope(random io.Reader, src *DualPublicKey, envelope []byte) (plaintext []byte, err error) {
 	if len(envelope) < 32 {
-		return nil, errUnableToVerify
+		return nil, ErrUnableToVerify
 	}
 
 	// Strip off the length of the signiature from the front of the envelope
 	var siglen uint32
 	if err := binary.Read(bytes.NewBuffer(envelope[0:4]), binary.LittleEndian, &siglen); err != nil {
-		return nil, errUnableToVerify
+		return nil, ErrUnableToVerify
 	}
 	envelope = envelope[4:]
 	if int(siglen) > len(envelope)+24 {
-		return nil, errUnableToVerify
+		return nil, ErrUnableToVerify
 	}
 	// Strip the signiature itself off the back of the envelope
 	sig := envelope[len(envelope)-int(siglen):]
 	envelope = envelope[0 : len(envelope)-int(siglen)]
 	h := sha256.Sum256(envelope)
 	if err := rsa.VerifyPKCS1v15(src.getRSAVerificationKey(), crypto.SHA256, h[:], sig); err != nil {
-		return nil, errUnableToVerify
+		return nil, ErrUnableToVerify
 	}
 
 	// We can now trust that the envelope is from who we thought it was from.
@@ -262,11 +262,11 @@ func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope [
 	buf := bytes.NewBuffer(envelope)
 	for _, val := range []*uint32{&infoLen, &eotkLen, &cipherLen} {
 		if err := binary.Read(buf, binary.LittleEndian, val); err != nil {
-			return nil, errVerifiedBufMalformed
+			return nil, ErrVerifiedBufMalformed
 		}
 	}
 	if int64(infoLen)+int64(eotkLen)+int64(cipherLen) != int64(len(buf.Bytes())) {
-		return nil, errVerifiedBufMalformed
+		return nil, ErrVerifiedBufMalformed
 	}
 
 	info := make([]byte, int(infoLen))
@@ -274,18 +274,18 @@ func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope [
 	ciphertext := make([]byte, int(cipherLen))
 	for _, chunk := range [][]byte{info, eotk, ciphertext} {
 		if n, err := buf.Read(chunk); n != len(chunk) || err != nil {
-			return nil, errVerifiedBufMalformed
+			return nil, ErrVerifiedBufMalformed
 		}
 	}
 
 	otk, err := rsa.DecryptOAEP(sha256.New(), random, dk.getRSADecryptionKey(), eotk, []byte("otk"))
 	if err != nil {
-		return nil, errVerifiedBufMalformed
+		return nil, ErrVerifiedBufMalformed
 	}
 
 	block, err := aes.NewCipher(otk)
 	if err != nil {
-		return nil, errVerifiedBufMalformed
+		return nil, ErrVerifiedBufMalformed
 	}
 	plaintext = ciphertext
 	cipher.NewCBCDecrypter(block, make([]byte, block.BlockSize())).CryptBlocks(plaintext, ciphertext)
@@ -296,7 +296,7 @@ func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope [
 			break
 		}
 		if b != 0 {
-			return nil, errVerifiedBufMalformed
+			return nil, ErrVerifiedBufMalformed
 		}
 	}
 

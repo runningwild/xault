@@ -2,13 +2,17 @@ package xault
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/gob"
 	"fmt"
+	"time"
+
+	"github.com/runningwild/xault/shared/phone/xault/xcrypt"
 )
 
 type LifetimeState struct {
 	// TODO: Hide keys in memory with a boojum when not in use.
-	key *DualKey
+	key *xcrypt.DualKey
 
 	info *PublicInfo
 }
@@ -18,7 +22,7 @@ type PublicInfo struct {
 	name string
 
 	// Server-unique id, this is the foo in foo@bar.com.
-	id []byte
+	id string
 
 	// Server that stores this users info, this is the bar.com in foo@bar.com.
 	serverName string
@@ -26,22 +30,14 @@ type PublicInfo struct {
 
 // MakeKeys constructs new private keys for encrypting and signing.
 func (ls *LifetimeState) MakeKeys(info *PublicInfo, bits int) error {
-	// crypt, err := rsa.GenerateKey(rand.Reader, bits)
-	// if err != nil {
-	// 	return err
-	// }
-	// sign, err := rsa.GenerateKey(rand.Reader, bits)
-	// if err != nil {
-	// 	return err
-	// }
-	// id := make([]byte, 16)
-	// if _, err := rand.Read(id); err != nil {
-	// 	return err
-	// }
-	// ls.cryptKey = crypt
-	// ls.signKey = sign
-	// ls.name = name
-	// ls.id = id
+	if ls.key != nil {
+		return fmt.Errorf("already have keys")
+	}
+	if key, err := xcrypt.MakeDualKey(rand.Reader, bits); err != nil {
+		return fmt.Errorf("unable to make keys: %v", err)
+	} else {
+		ls.key = key
+	}
 	return nil
 }
 
@@ -62,6 +58,50 @@ func (ls *LifetimeState) Store() ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+var ls LifetimeState
+
+func Test2(msg string) (string, error) {
+	return ls.Test(msg)
+}
+
+func (ls *LifetimeState) Test(msg string) (string, error) {
+	k1, err := xcrypt.MakeDualKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	k1pub, err := k1.MakePublicKey()
+	if err != nil {
+		return "", err
+	}
+	k2, err := xcrypt.MakeDualKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	k2pub, err := k2.MakePublicKey()
+	if err != nil {
+		return "", err
+	}
+	start := time.Now()
+	envelope, err := k1.SealEnvelope(rand.Reader, k2pub, []byte(msg))
+	sealTime := time.Since(start)
+	if err != nil {
+		return "", fmt.Errorf("failed to seal: %v", err)
+	}
+	buf := bytes.NewBuffer(nil)
+	buf.Write([]byte(fmt.Sprintf("%v", sealTime)))
+	start = time.Now()
+	msg2, err := k2.OpenEnvelope(rand.Reader, k1pub, envelope)
+	openTime := time.Since(start)
+	if err != nil {
+		return "", fmt.Errorf("failed to open: %v", err)
+	}
+	if string(msg2) != msg {
+		return "", fmt.Errorf("open garbage: %q", msg2)
+	}
+	buf.Write([]byte(fmt.Sprintf(" %v", openTime)))
+	return string(buf.Bytes()), nil
 }
 
 // var globalState LifetimeState
