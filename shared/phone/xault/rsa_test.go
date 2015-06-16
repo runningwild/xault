@@ -55,7 +55,7 @@ func TestEnvelope(t *testing.T) {
 	c := cmwc.MakeGoodCmwc()
 	c.Seed(123456789)
 	keySize := 2048
-	Convey("DualKeys can be used to seal and open envelopes", t, func() {
+	Convey("dualKeys can be used to seal and open envelopes", t, func() {
 		localPrivate, err := makeDualKey(c, keySize)
 		So(err, ShouldBeNil)
 		localPublic, err := localPrivate.MakePublicKey()
@@ -72,10 +72,33 @@ func TestEnvelope(t *testing.T) {
 		decoded, err := localPrivate.openEnvelope(c, remotePublic, envelope)
 		So(err, ShouldBeNil)
 		So(decoded, ShouldResemble, plaintext)
+
+		Convey("open envelope doesn't open malformed inputs", func() {
+			otherPrivate, err := makeDualKey(c, keySize)
+			So(err, ShouldBeNil)
+			otherPublic, err := otherPrivate.MakePublicKey()
+			So(err, ShouldBeNil)
+
+			// Shouldn't be able to verify with the wrong public key.
+			_, err = localPrivate.openEnvelope(c, otherPublic, envelope)
+			So(err, ShouldEqual, errUnableToVerify)
+
+			// Shouldn't be able to verify if we're missing a byte.
+			_, err = localPrivate.openEnvelope(c, remotePublic, envelope[1:])
+			So(err, ShouldEqual, errUnableToVerify)
+			_, err = localPrivate.openEnvelope(c, remotePublic, envelope[0:len(envelope)-1])
+			So(err, ShouldEqual, errUnableToVerify)
+
+			// Shouldn't be able to verify if a byte is corrupted.
+			envelope[50]++
+			_, err = localPrivate.openEnvelope(c, remotePublic, envelope)
+			So(err, ShouldEqual, errUnableToVerify)
+			envelope[50]--
+		})
 	})
 }
 
-func benchmarkEnvelope(msgSize, keySize int, b *testing.B) {
+func benchmarkSealEnvelope(msgSize, keySize int, b *testing.B) {
 	b.StopTimer()
 	c := cmwc.MakeGoodCmwc()
 	c.Seed(123456789)
@@ -101,14 +124,64 @@ func benchmarkEnvelope(msgSize, keySize int, b *testing.B) {
 	}
 }
 
-func Benchmark1KEnvelope(b *testing.B) {
-	benchmarkEnvelope(1<<10, 2048, b)
+func Benchmark1KSealEnvelope(b *testing.B) {
+	benchmarkSealEnvelope(1<<10, 2048, b)
 }
 
-func Benchmark1MEnvelope(b *testing.B) {
-	benchmarkEnvelope(1<<20, 2048, b)
+func Benchmark1MSealEnvelope(b *testing.B) {
+	benchmarkSealEnvelope(1<<20, 2048, b)
 }
 
-func Benchmark10MEnvelope(b *testing.B) {
-	benchmarkEnvelope(10<<20, 2048, b)
+func Benchmark10MSealEnvelope(b *testing.B) {
+	benchmarkSealEnvelope(10<<20, 2048, b)
+}
+
+func benchmarkOpenEnvelope(msgSize, keySize int, b *testing.B) {
+	b.StopTimer()
+	c := cmwc.MakeGoodCmwc()
+	c.Seed(123456789)
+	senderPrivate, err := makeDualKey(c, keySize)
+	if err != nil {
+		panic(err)
+	}
+	sender, err := senderPrivate.MakePublicKey()
+	if err != nil {
+		panic(err)
+	}
+	receiverPrivate, err := makeDualKey(c, keySize)
+	if err != nil {
+		panic(err)
+	}
+	receiver, err := receiverPrivate.MakePublicKey()
+	if err != nil {
+		panic(err)
+	}
+	plaintext := make([]byte, msgSize)
+	envelope, err := senderPrivate.sealEnvelope(c, receiver, plaintext)
+	if err != nil {
+		panic(err)
+	}
+	msg, err := receiverPrivate.openEnvelope(c, sender, envelope)
+	if err != nil {
+		panic(err)
+	}
+	if string(msg) != string(plaintext) {
+		panic("messages didn't match")
+	}
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		receiverPrivate.openEnvelope(c, sender, envelope)
+	}
+}
+
+func Benchmark1KOpenEnvelope(b *testing.B) {
+	benchmarkOpenEnvelope(1<<10, 2048, b)
+}
+
+func Benchmark1MOpenEnvelope(b *testing.B) {
+	benchmarkOpenEnvelope(1<<20, 2048, b)
+}
+
+func Benchmark10MOpenEnvelope(b *testing.B) {
+	benchmarkOpenEnvelope(10<<20, 2048, b)
 }

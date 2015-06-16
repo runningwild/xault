@@ -230,8 +230,12 @@ func (dk *DualKey) sealEnvelope(random io.Reader, dst *DualPublicKey, plaintext 
 	return envelope, nil
 }
 
+var errUnableToVerify = fmt.Errorf("unable to verify envelope")
+var errVerifiedBufMalformed = fmt.Errorf("envelope verified, but contents are malformed")
+
+// openEnvelope opens an envelope created with sealEnvelope.  It verifies that the message is signed
+// by src, then decrypts it using the enclosed key.
 func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope []byte) (plaintext []byte, err error) {
-	errUnableToVerify := fmt.Errorf("unable to verify envelope")
 	if len(envelope) < 32 {
 		return nil, errUnableToVerify
 	}
@@ -254,7 +258,6 @@ func (dk *DualKey) openEnvelope(random io.Reader, src *DualPublicKey, envelope [
 	}
 
 	// We can now trust that the envelope is from who we thought it was from.
-	errVerifiedBufMalformed := fmt.Errorf("envelope verified, but contents are malformed")
 	var infoLen, eotkLen, cipherLen uint32
 	buf := bytes.NewBuffer(envelope)
 	for _, val := range []*uint32{&infoLen, &eotkLen, &cipherLen} {
