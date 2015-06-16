@@ -1,5 +1,6 @@
 package com.runningwild.xault;
 
+import android.content.Intent;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
 import android.view.Menu;
@@ -24,12 +25,15 @@ public class MainActivity extends ActionBarActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);
-        try {
-            String res = Xault.Test2("thunder");
-            Toast.makeText(getApplicationContext(), res, Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
+//        try {
+//            String res = Xault.Test2("thunder");
+//            Toast.makeText(getApplicationContext(), res, Toast.LENGTH_SHORT).show();
+//        } catch (Exception e) {
+//
+//        }
+        Intent intent = new Intent(this, MakeId.class);
+        startActivity(intent);
 
-        }
         return true;
     }
 

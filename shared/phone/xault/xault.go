@@ -3,12 +3,19 @@ package xault
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"time"
 
 	"github.com/runningwild/xault/shared/phone/xault/xcrypt"
 )
+
+// Initial flow should be:
+// Start up
+// Load state, on failure, prompt for usename, then create and save state.
+
+var ls LifetimeState
 
 type LifetimeState struct {
 	// TODO: Hide keys in memory with a boojum when not in use.
@@ -26,6 +33,33 @@ type PublicInfo struct {
 
 	// Server that stores this users info, this is the bar.com in foo@bar.com.
 	serverName string
+}
+
+func MakeKeys(name string) (string, error) {
+	minNameLen := 5
+	if len(name) < minNameLen {
+		return "", fmt.Errorf("name must be at least %d characters long", minNameLen)
+	}
+	idBits := make([]byte, 32)
+	if n, err := rand.Read(idBits); n != len(idBits) || err != nil {
+		return "", fmt.Errorf("unable to generate an id")
+	}
+	buf := bytes.NewBuffer(nil)
+	enc := base64.NewEncoder(base64.URLEncoding, buf)
+	enc.Write(idBits)
+	enc.Close()
+	id := buf.Bytes()
+	dk, err := xcrypt.MakeDualKey(rand.Reader, 2048)
+	if err != nil {
+		return "", err
+	}
+	ls.key = dk
+	ls.info = &PublicInfo{
+		name:       name,
+		id:         string(id),
+		serverName: "server.com",
+	}
+	return fmt.Sprintf("%s@%s", ls.info.name, ls.info.serverName), nil
 }
 
 // MakeKeys constructs new private keys for encrypting and signing.
@@ -59,8 +93,6 @@ func (ls *LifetimeState) Store() ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
-
-var ls LifetimeState
 
 func Test2(msg string) (string, error) {
 	return ls.Test(msg)
@@ -102,20 +134,4 @@ func (ls *LifetimeState) Test(msg string) (string, error) {
 	}
 	buf.Write([]byte(fmt.Sprintf(" %v", openTime)))
 	return string(buf.Bytes()), nil
-}
-
-// var globalState LifetimeState
-
-// func MakeKeys(bits int) error {
-// 	return globalState.MakeKeys(bits)
-// }
-// func Load(data []byte) error {
-// 	return globalState.Load(data)
-// }
-// func Store() ([]byte, error) {
-// 	return globalState.Store()
-// }
-
-func Hello(name string) string {
-	return fmt.Sprintf("Hello thumb, %s!\n", name)
 }

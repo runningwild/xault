@@ -9,16 +9,6 @@ import go.Seq;
 public abstract class Xault {
     private Xault() {} // uninstantiable
     
-    public static String Hello(String name) {
-        go.Seq _in = new go.Seq();
-        go.Seq _out = new go.Seq();
-        String _result;
-        _in.writeUTF16(name);
-        Seq.send(DESCRIPTOR, CALL_Hello, _in, _out);
-        _result = _out.readUTF16();
-        return _result;
-    }
-    
     public static final class LifetimeState implements go.Seq.Object {
         private static final String DESCRIPTOR = "go.xault.LifetimeState";
         private static final int CALL_Load = 0x00c;
@@ -111,6 +101,20 @@ public abstract class Xault {
         
     }
     
+    public static String MakeKeys(String name) throws Exception {
+        go.Seq _in = new go.Seq();
+        go.Seq _out = new go.Seq();
+        String _result;
+        _in.writeUTF16(name);
+        Seq.send(DESCRIPTOR, CALL_MakeKeys, _in, _out);
+        _result = _out.readUTF16();
+        String _err = _out.readUTF16();
+        if (_err != null) {
+            throw new Exception(_err);
+        }
+        return _result;
+    }
+    
     public static final class PublicInfo implements go.Seq.Object {
         private static final String DESCRIPTOR = "go.xault.PublicInfo";
         
@@ -159,7 +163,7 @@ public abstract class Xault {
         return _result;
     }
     
-    private static final int CALL_Hello = 1;
+    private static final int CALL_MakeKeys = 1;
     private static final int CALL_Test2 = 2;
     private static final String DESCRIPTOR = "xault";
 }
