@@ -18,8 +18,14 @@ mkdir -p ../../android/Xault/app/src/main/java/go/xault
 gobind -lang=java github.com/runningwild/xault/shared/phone/xault > ../../android/Xault/app/src/main/java/go/xault/Xault.java
 cp $GOPATH/src/golang.org/x/mobile/app/Go.java ../../android/Xault/app/src/main/java/go/
 cp $GOPATH/src/golang.org/x/mobile/bind/java/Seq.java ../../android/Xault/app/src/main/java/go/
+
 mkdir -p ../../android/Xault/app/src/main/jniLibs/armeabi-v7a
 CGO_ENABLED=1 GOOS=android GOARCH=arm GOARM=7 go build -ldflags="-shared" -o ../../android/Xault/app/src/main/jniLibs/armeabi-v7a/libgojni.so .
+
+# I want this to work so that I can support x86 android devices, but also for emulators.  Right now
+# android/x86 is not a valid GOOS/GOARCH combo.
+# mkdir -p ../../android/Xault/app/src/main/jniLibs/x86
+# CGO_ENABLED=1 GOOS=android GOARCH=amd64 go build -ldflags="-shared" -o ../../android/Xault/app/src/main/jniLibs/x86/libgojni.so .
 
 # mkdir -p libs/armeabi-v7a src/go/hi
 # ANDROID_APP=$PWD

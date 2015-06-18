@@ -15,6 +15,9 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+
 import go.Go;
 import go.xault.Xault;
 
@@ -30,28 +33,33 @@ public class MakeId extends ActionBarActivity {
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                AsyncTask<Void, Void, String> task = new AsyncTask<Void, Void, String>() {
+                AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
+                    String errMsg;
+
                     @Override
                     protected void onPreExecute() {
                         EditText myEditText = (EditText) findViewById(R.id.makeIdName);
-                        InputMethodManager imm = (InputMethodManager)getSystemService(
+                        InputMethodManager imm = (InputMethodManager) getSystemService(
                                 Context.INPUT_METHOD_SERVICE);
                         imm.hideSoftInputFromWindow(myEditText.getWindowToken(), 0);
                         ((ProgressBar) findViewById(R.id.makeIdProgress)).setVisibility(View.VISIBLE);
                     }
 
                     @Override
-                    protected void onPostExecute(String result) {
+                    protected void onPostExecute(Void result) {
                         ((ProgressBar) findViewById(R.id.makeIdProgress)).setVisibility(View.INVISIBLE);
-                        Toast.makeText(getApplicationContext(), result, Toast.LENGTH_LONG).show();
+                        Toast.makeText(getApplicationContext(), "successfully generated keys", Toast.LENGTH_LONG).show();
+                        finish();
                     }
 
                     @Override
-                    protected String doInBackground(Void... params) {
+                    protected Void doInBackground(Void... params) {
                         try {
-                            return Xault.MakeKeys("Buttons");
+                            Xault.MakeKeys("Buttons");
+                            return null;
                         } catch (Exception e) {
-                            return e.getMessage();
+                            errMsg = e.getMessage();
+                            return null;
                         }
                     }
                 };
