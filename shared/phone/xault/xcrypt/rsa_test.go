@@ -18,7 +18,7 @@ func TestDualKeys(t *testing.T) {
 		dk, err := MakeDualKey(c, 1024)
 		So(err, ShouldBeNil)
 		So(dk, ShouldNotBeNil)
-		keys := []*rsa.PrivateKey{dk.getRSADecryptionKey(), dk.getRSASigniatureKey()}
+		keys := []*rsa.PrivateKey{dk.GetRSADecryptionKey(), dk.GetRSASigniatureKey()}
 		So(keys[0].E, ShouldNotEqual, keys[1].E)
 		So(keys[0].Validate(), ShouldBeNil)
 		So(keys[1].Validate(), ShouldBeNil)
@@ -27,8 +27,8 @@ func TestDualKeys(t *testing.T) {
 		So(pdk, ShouldNotBeNil)
 
 		Convey("dual keys can encrypt/decrypt", func() {
-			enc := pdk.getRSAEncryptionKey()
-			dec := dk.getRSADecryptionKey()
+			enc := pdk.GetRSAEncryptionKey()
+			dec := dk.GetRSADecryptionKey()
 			msg := "This message is awesome"
 			label := "label"
 			ciphertext, err := rsa.EncryptOAEP(sha256.New(), c, enc, []byte(msg), []byte(label))
@@ -39,8 +39,8 @@ func TestDualKeys(t *testing.T) {
 		})
 
 		Convey("dual keys can sign/verify", func() {
-			verify := pdk.getRSAVerificationKey()
-			sign := dk.getRSASigniatureKey()
+			verify := pdk.GetRSAVerificationKey()
+			sign := dk.GetRSASigniatureKey()
 			msg := "This message is awesome"
 			hashed := sha256.Sum256([]byte(msg))
 			signiature, err := rsa.SignPKCS1v15(c, sign, crypto.SHA256, hashed[:])

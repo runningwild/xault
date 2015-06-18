@@ -39,8 +39,8 @@ type DualPublicKey struct {
 }
 
 func (dk *DualKey) MakePublicKey() (*DualPublicKey, error) {
-	enc := dk.getRSADecryptionKey()
-	sig := dk.getRSASigniatureKey()
+	enc := dk.GetRSADecryptionKey()
+	sig := dk.GetRSASigniatureKey()
 	if enc.N.Cmp(sig.N) != 0 {
 		return nil, fmt.Errorf("keys are malformed")
 	}
@@ -52,11 +52,11 @@ func (dk *DualKey) MakePublicKey() (*DualPublicKey, error) {
 	return dpk, nil
 }
 
-func (dpk *DualPublicKey) getRSAEncryptionKey() *rsa.PublicKey {
+func (dpk *DualPublicKey) GetRSAEncryptionKey() *rsa.PublicKey {
 	return &rsa.PublicKey{E: dpk.E0, N: dpk.N}
 }
 
-func (dpk *DualPublicKey) getRSAVerificationKey() *rsa.PublicKey {
+func (dpk *DualPublicKey) GetRSAVerificationKey() *rsa.PublicKey {
 	return &rsa.PublicKey{E: dpk.E1, N: dpk.N}
 }
 
@@ -143,14 +143,14 @@ func (dk *DualKey) makeRSAKey(D *big.Int) *rsa.PrivateKey {
 	return &pk
 }
 
-func (dk *DualKey) getRSADecryptionKey() *rsa.PrivateKey {
+func (dk *DualKey) GetRSADecryptionKey() *rsa.PrivateKey {
 	if dk.encKey == nil {
 		dk.encKey = dk.makeRSAKey(dk.D0)
 	}
 	return dk.encKey
 }
 
-func (dk *DualKey) getRSASigniatureKey() *rsa.PrivateKey {
+func (dk *DualKey) GetRSASigniatureKey() *rsa.PrivateKey {
 	if dk.sigKey == nil {
 		dk.sigKey = dk.makeRSAKey(dk.D1)
 	}
@@ -192,7 +192,7 @@ func (dk *DualKey) SealEnvelope(random io.Reader, dst *DualPublicKey, plaintext 
 	cipher.NewCBCEncrypter(block, make([]byte, block.BlockSize())).CryptBlocks(ciphertext, plaintext)
 
 	// Now encrypt the otk with the recipient's encryption key
-	encryptedOtk, err := rsa.EncryptOAEP(sha256.New(), random, dst.getRSAEncryptionKey(), otk, []byte("otk"))
+	encryptedOtk, err := rsa.EncryptOAEP(sha256.New(), random, dst.GetRSAEncryptionKey(), otk, []byte("otk"))
 	if err != nil {
 		return nil, fmt.Errorf("unable to encrypt otk: %v", err)
 	}
@@ -216,7 +216,7 @@ func (dk *DualKey) SealEnvelope(random io.Reader, dst *DualPublicKey, plaintext 
 
 	// Now we hash and sign the envelope that we have so far so that it can't be tampered with.
 	h := sha256.Sum256(buf.Bytes()[4:])
-	signiature, err := rsa.SignPKCS1v15(random, dk.getRSASigniatureKey(), crypto.SHA256, h[:])
+	signiature, err := rsa.SignPKCS1v15(random, dk.GetRSASigniatureKey(), crypto.SHA256, h[:])
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign envelope: %v", err)
 	}
@@ -253,7 +253,7 @@ func (dk *DualKey) OpenEnvelope(random io.Reader, src *DualPublicKey, envelope [
 	sig := envelope[len(envelope)-int(siglen):]
 	envelope = envelope[0 : len(envelope)-int(siglen)]
 	h := sha256.Sum256(envelope)
-	if err := rsa.VerifyPKCS1v15(src.getRSAVerificationKey(), crypto.SHA256, h[:], sig); err != nil {
+	if err := rsa.VerifyPKCS1v15(src.GetRSAVerificationKey(), crypto.SHA256, h[:], sig); err != nil {
 		return nil, ErrUnableToVerify
 	}
 
@@ -278,7 +278,7 @@ func (dk *DualKey) OpenEnvelope(random io.Reader, src *DualPublicKey, envelope [
 		}
 	}
 
-	otk, err := rsa.DecryptOAEP(sha256.New(), random, dk.getRSADecryptionKey(), eotk, []byte("otk"))
+	otk, err := rsa.DecryptOAEP(sha256.New(), random, dk.GetRSADecryptionKey(), eotk, []byte("otk"))
 	if err != nil {
 		return nil, ErrVerifiedBufMalformed
 	}
