@@ -18,3 +18,14 @@ type MakeIdChallengeResponse struct {
 
 type MakeIdResponse struct {
 }
+
+// C->S: Id, Envelope(SPe, Ps, ContactId)
+//
+// envelope, err := personalKey.SealEnvelope(random, serverKey, []byte(contactId))
+type AddContactRequest struct {
+	Id       string
+	Envelope []byte
+}
+
+type AddContactResponse struct {
+}

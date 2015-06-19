@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/rpc"
 	"sync"
 	"time"
@@ -21,11 +22,15 @@ type userInfo struct {
 	verified      bool
 	challenge     []byte
 	challengeTime time.Time
+
+	contactsMutex sync.RWMutex
+	contacts      map[string]bool
 }
 
 type Xault struct {
 	usersMutex sync.Mutex
 	users      map[string]*userInfo
+	keys       *xcrypt.DualKey
 }
 
 func (x *Xault) MakeId(req *api.MakeIdRequest, resp *api.MakeIdChallenge) error {
@@ -53,6 +58,7 @@ func (x *Xault) MakeId(req *api.MakeIdRequest, resp *api.MakeIdChallenge) error 
 		keys:          req.Keys,
 		challenge:     challenge,
 		challengeTime: time.Now(),
+		contacts:      make(map[string]bool),
 	}
 	resp.EncryptedChallenge = encryptedChallenge
 	return nil
@@ -75,9 +81,36 @@ func (x *Xault) MakeIdCompleteChallenge(req *api.MakeIdChallengeResponse, resp *
 	return nil
 }
 
-func MakeXaultServer() *rpc.Server {
+func (x *Xault) AddContactRequest(req *api.AddContactRequest, resp *api.AddContactResponse) error {
+	x.usersMutex.Lock()
+	user, ok := x.users[req.Id]
+	x.usersMutex.Unlock()
+	if !ok {
+		return fmt.Errorf("no such user")
+	}
+	contactIdBytes, err := x.keys.OpenEnvelope(random, user.keys, req.Envelope)
+	if err != nil {
+		return fmt.Errorf("internal error")
+	}
+	contactId := string(contactIdBytes)
+
+	x.usersMutex.Lock()
+	contact, ok := x.users[contactId]
+	x.usersMutex.Unlock()
+	if !ok {
+		return fmt.Errorf("no such contact")
+	}
+
+	user.contactsMutex.Lock()
+	user.contacts[contactId] = true
+	user.contactsMutex.Unlock()
+}
+
+func MakeXaultServer(keys *xcrypt.DualKey, random io.Reader) *rpc.Server {
 	x := &Xault{
-		users: make(map[string]*userInfo),
+		users:  make(map[string]*userInfo),
+		keys:   keys,
+		random: random,
 	}
 	server := rpc.NewServer()
 	server.Register(x)
