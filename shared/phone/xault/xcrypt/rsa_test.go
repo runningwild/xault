@@ -26,6 +26,15 @@ func TestDualKeys(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(pdk, ShouldNotBeNil)
 
+		Convey("can convert keys to and from strings", func() {
+			dk2, err := DualKeyFromString(dk.ToString())
+			So(err, ShouldBeNil)
+			So(dk.D0.Cmp(dk2.D0), ShouldEqual, 0)
+			So(dk.D1.Cmp(dk2.D1), ShouldEqual, 0)
+			So(dk.P.Cmp(dk2.P), ShouldEqual, 0)
+			So(dk.Q.Cmp(dk2.Q), ShouldEqual, 0)
+		})
+
 		Convey("dual keys can encrypt/decrypt", func() {
 			enc := pdk.GetRSAEncryptionKey()
 			dec := dk.GetRSADecryptionKey()

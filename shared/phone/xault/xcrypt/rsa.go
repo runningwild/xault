@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -28,6 +29,19 @@ type DualKey struct {
 	encKey, sigKey *rsa.PrivateKey
 }
 
+func (dk *DualKey) String() string {
+	data, _ := json.MarshalIndent(dk, "", "  ")
+	return string(data)
+}
+
+func DualKeyFromString(str string) (*DualKey, error) {
+	var dk DualKey
+	if err := json.Unmarshal([]byte(str), &dk); err != nil {
+		return nil, err
+	}
+	return &dk, nil
+}
+
 type DualPublicKey struct {
 	// E0 is the public exponent used for encryption, E1 is the same but for verification.
 	E0, E1 int
@@ -36,6 +50,19 @@ type DualPublicKey struct {
 	N *big.Int
 
 	encKey, sigKey *rsa.PublicKey
+}
+
+func (dpk *DualPublicKey) String() string {
+	data, _ := json.MarshalIndent(dpk, "", "  ")
+	return string(data)
+}
+
+func DualPublicKeyFromString(str string) (*DualPublicKey, error) {
+	var dpk DualPublicKey
+	if err := json.Unmarshal([]byte(str), &dpk); err != nil {
+		return nil, err
+	}
+	return &dpk, nil
 }
 
 func (dk *DualKey) MakePublicKey() (*DualPublicKey, error) {

@@ -3,4 +3,5 @@ C->S: Id, Pe, Pv     Client sends id and public keys
 S->C: Pe(Challenge)  Server sends a challenge encrypted with Pe
 C->S: Ps(Challenge)  Client decrypts the challenge and signs it with it's Ps
 
-
+Add Contact:
+C->S: Id, Envelope(SPe, Ps, ContactId)

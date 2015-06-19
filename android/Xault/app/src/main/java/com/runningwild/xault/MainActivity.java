@@ -9,6 +9,7 @@ import android.widget.Toast;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 
 import go.Go;
 import go.xault.Xault;
@@ -34,6 +35,14 @@ public class MainActivity extends ActionBarActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);
+        try {
+            String[] l = getAssets().list("assets");
+            for (String n : l) {
+                Toast.makeText(getApplicationContext(), "Assets: " + n, Toast.LENGTH_SHORT).show();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         return true;
     }
 
