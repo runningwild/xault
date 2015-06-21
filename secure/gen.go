@@ -19,6 +19,7 @@ type templateParams struct {
 	Package      string
 	KeyName      string
 	PublicKeyStr string
+	Command      string
 }
 
 func main() {
@@ -58,6 +59,10 @@ func main() {
 		Package:      *packageName,
 		KeyName:      *keyName,
 		PublicKeyStr: fmt.Sprintf("%v", dpk),
+	}
+	data.Command = "go run gen.go"
+	for _, arg := range os.Args[1:] {
+		data.Command += " " + arg
 	}
 	if err := t.Execute(f, data); err != nil {
 		fmt.Printf("failed to execute template: %v\n", err)

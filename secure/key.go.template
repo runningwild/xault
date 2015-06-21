@@ -1,4 +1,6 @@
 // This file is auto-generated - DO NOT EDIT
+// Command that generated this file:
+// {{.Command}}
 
 package {{.Package}}
 
