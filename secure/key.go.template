@@ -1,0 +1,16 @@
+// This file is auto-generated - DO NOT EDIT
+
+package {{.Package}}
+
+import "github.com/runningwild/xault/shared/phone/xault/xcrypt"
+
+const {{.KeyName}}String = `{{.PublicKeyStr}}`
+var {{.KeyName}} *xcrypt.DualPublicKey
+
+func init() {
+	var err error
+	{{.KeyName}}, err = xcrypt.DualPublicKeyFromString({{.KeyName}}String)
+	if err != nil {
+		panic(err)
+	}
+}

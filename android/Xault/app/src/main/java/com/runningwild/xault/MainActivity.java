@@ -26,6 +26,7 @@ public class MainActivity extends ActionBarActivity {
         try {
             Xault.SetRootDir(getFilesDir().getAbsolutePath());
         } catch (Exception e) {
+            Toast.makeText(getApplicationContext(), "Failed to load: " + e.getMessage(), Toast.LENGTH_LONG).show();
             e.printStackTrace();
         }
     }
@@ -36,7 +37,7 @@ public class MainActivity extends ActionBarActivity {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);
         try {
-            String[] l = getAssets().list("assets");
+            String[] l = getAssets().list("");
             for (String n : l) {
                 Toast.makeText(getApplicationContext(), "Assets: " + n, Toast.LENGTH_SHORT).show();
             }
