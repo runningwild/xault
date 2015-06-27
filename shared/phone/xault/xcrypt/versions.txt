@@ -1,0 +1,6 @@
+{
+	"Current": "android",
+	"Words": {
+		"android": {"KeyBits": 2048}	
+	}
+}

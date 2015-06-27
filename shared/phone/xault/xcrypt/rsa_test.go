@@ -27,7 +27,7 @@ func TestDualKeys(t *testing.T) {
 		So(pdk, ShouldNotBeNil)
 
 		Convey("can convert keys to and from strings", func() {
-			dk2, err := DualKeyFromString(dk.ToString())
+			dk2, err := DualKeyFromString(dk.String())
 			So(err, ShouldBeNil)
 			So(dk.D0.Cmp(dk2.D0), ShouldEqual, 0)
 			So(dk.D1.Cmp(dk2.D1), ShouldEqual, 0)
